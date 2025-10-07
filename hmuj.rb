@@ -17,27 +17,41 @@ module HelpMeUnderstandJSON
   # Check if a path matches any ignore pattern (exact or glob)
   #
   # @param path [String] The path to check
-  # @param ignore_paths [Array<String>] Array of exact paths or glob patterns
-  # @return [Boolean] True if path should be ignored
+  # @param ignore_paths [Array<String>] Array of exact paths or glob patterns (with optional ::reason)
+  # @return [Array] [matched, reason] where matched is boolean and reason is string or nil
   def path_matches_ignore?(path, ignore_paths)
-    ignore_paths.any? do |pattern|
-      if pattern.include?('*')
-        # Convert glob pattern to regex
-        # Escape special regex characters except *
-        regex_pattern = Regexp.escape(pattern).gsub('\*', '.*')
-        path.match?(/^#{regex_pattern}$/)
-      else
-        # Exact match
-        path == pattern
+    ignore_paths.each do |pattern_with_reason|
+      # Split pattern and reason by ::
+      pattern, reason = pattern_with_reason.split('::', 2)
+
+      # Remove surrounding quotes from reason if present
+      if reason
+        reason = reason.strip
+        reason = reason[1..-2] if reason.start_with?('"') && reason.end_with?('"')
       end
+
+      # Check if path matches pattern
+      matches = if pattern.include?('*')
+                  # Convert glob pattern to regex
+                  # Escape special regex characters except *
+                  regex_pattern = Regexp.escape(pattern).gsub('\*', '.*')
+                  path.match?(/^#{regex_pattern}$/)
+                else
+                  # Exact match
+                  path == pattern
+                end
+
+      return [true, reason] if matches
     end
+
+    [false, nil]
   end
 
   # Pretty-print JSON structure with dot-notation paths
   #
   # @param json [Object] The JSON object to process (Hash, Array, or primitive)
   # @param path [String] The current path in dot-notation (used for recursion)
-  # @param ignore_paths [Array<String>] Paths to ignore (exact or glob patterns)
+  # @param ignore_paths [Array<String>] Paths to ignore (exact or glob patterns, with optional ::reason)
   # @return [String] Formatted string representation of the JSON structure
   #
   # @example
@@ -45,8 +59,13 @@ module HelpMeUnderstandJSON
   #   # => ".user.name = \"John\"\n"
   def simple_json_pp(json, path = '', ignore_paths = [])
     # Check if current path should be ignored
-    if path_matches_ignore?(path, ignore_paths)
-      return "#{path} (ignored)\n"
+    matched, reason = path_matches_ignore?(path, ignore_paths)
+    if matched
+      if reason && !reason.empty?
+        return "#{path} (ignored: #{reason})\n"
+      else
+        return "#{path} (ignored)\n"
+      end
     end
 
     case json
@@ -91,7 +110,9 @@ if $PROGRAM_NAME == __FILE__
     opts.separator ''
     opts.separator 'Options:'
 
-    opts.on('--ignore-path=PATH', 'Ignore a specific path (can be used multiple times)') do |path|
+    opts.on('--ignore-path=PATH', 'Ignore a specific path (can be used multiple times)',
+            'Supports glob patterns with * wildcard',
+            'Optional reason: --ignore-path=PATH::"reason"') do |path|
       ignore_paths << path
     end
 
@@ -102,6 +123,8 @@ if $PROGRAM_NAME == __FILE__
       puts '  hmuj.rb data.json'
       puts '  echo \'{"key":"value"}\' | hmuj.rb'
       puts '  hmuj.rb --ignore-path=.user.password --ignore-path=.secret data.json'
+      puts '  hmuj.rb --ignore-path=.user.password::"sensitive data" data.json'
+      puts '  hmuj.rb --ignore-path=.*.secret::"all secrets" data.json'
       exit
     end
   end.parse!

@@ -251,4 +251,83 @@ class HelpMeUnderstandJSONIgnorePathsTest < Minitest::Test
     assert_includes output, '.user.passcode (ignored)'
     assert_includes output, '.user.email = "john@example.com"'
   end
+
+  # ===== Ignore Path with Reasons Tests =====
+
+  def test_exact_match_with_reason
+    input = { 'user' => { 'password' => 'secret123', 'email' => 'john@example.com' } }
+    ignore_paths = ['.user.password::"sensitive data"']
+    output = HelpMeUnderstandJSON.simple_json_pp(input, '', ignore_paths)
+
+    assert_includes output, '.user.password (ignored: sensitive data)'
+    assert_includes output, '.user.email = "john@example.com"'
+    refute_includes output, 'secret123'
+  end
+
+  def test_glob_pattern_with_reason
+    input = {
+      'user' => { 'password' => 'secret123' },
+      'admin' => { 'password' => 'admin456' },
+      'public' => { 'name' => 'App' }
+    }
+    ignore_paths = ['.*.password::"all passwords are sensitive"']
+    output = HelpMeUnderstandJSON.simple_json_pp(input, '', ignore_paths)
+
+    assert_includes output, '.user.password (ignored: all passwords are sensitive)'
+    assert_includes output, '.admin.password (ignored: all passwords are sensitive)'
+    assert_includes output, '.public.name = "App"'
+  end
+
+  def test_multiple_ignore_paths_with_mixed_reasons
+    input = {
+      'user' => { 'password' => 'secret123', 'email' => 'john@example.com' },
+      'public' => { 'name' => 'App' },
+      'api' => { 'key' => 'apikey' }
+    }
+    ignore_paths = ['.user.password::"credential"', '.public.name']
+    output = HelpMeUnderstandJSON.simple_json_pp(input, '', ignore_paths)
+
+    assert_includes output, '.user.password (ignored: credential)'
+    assert_includes output, '.public.name (ignored)'
+    assert_includes output, '.user.email = "john@example.com"'
+    assert_includes output, '.api.key = "apikey"'
+  end
+
+  def test_reason_with_special_characters
+    input = { 'api' => { 'key' => 'secret', 'endpoint' => 'https://api.example.com' } }
+    ignore_paths = ['.api.key::"API key - don\'t expose!"']
+    output = HelpMeUnderstandJSON.simple_json_pp(input, '', ignore_paths)
+
+    assert_includes output, '.api.key (ignored: API key - don\'t expose!)'
+    assert_includes output, '.api.endpoint = "https://api.example.com"'
+  end
+
+  def test_empty_reason
+    input = { 'path' => { 'value' => 'test' }, 'other' => 'data' }
+    ignore_paths = ['.path::""']
+    output = HelpMeUnderstandJSON.simple_json_pp(input, '', ignore_paths)
+
+    # Empty reason should behave like no reason
+    assert_includes output, '.path (ignored)'
+    assert_includes output, '.other = "data"'
+  end
+
+  def test_reason_with_double_colons_in_text
+    input = { 'config' => { 'format' => 'key:value' }, 'other' => 'data' }
+    ignore_paths = ['.config::"format: key::value"']
+    output = HelpMeUnderstandJSON.simple_json_pp(input, '', ignore_paths)
+
+    assert_includes output, '.config (ignored: format: key::value)'
+    assert_includes output, '.other = "data"'
+  end
+
+  def test_whitespace_handling_in_reason
+    input = { 'path' => { 'value' => 'test' }, 'other' => 'data' }
+    ignore_paths = ['.path::"  extra spaces  "']
+    output = HelpMeUnderstandJSON.simple_json_pp(input, '', ignore_paths)
+
+    # Preserve whitespace exactly as user provided
+    assert_includes output, '.path (ignored:   extra spaces  )'
+    assert_includes output, '.other = "data"'
+  end
 end
