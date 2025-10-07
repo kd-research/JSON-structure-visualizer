@@ -52,12 +52,13 @@ module HelpMeUnderstandJSON
   # @param json [Object] The JSON object to process (Hash, Array, or primitive)
   # @param path [String] The current path in dot-notation (used for recursion)
   # @param ignore_paths [Array<String>] Paths to ignore (exact or glob patterns, with optional ::reason)
+  # @param sort_keys [Boolean] Whether to sort hash keys alphabetically
   # @return [String] Formatted string representation of the JSON structure
   #
   # @example
   #   simple_json_pp({ "user" => { "name" => "John" } })
   #   # => ".user.name = \"John\"\n"
-  def simple_json_pp(json, path = '', ignore_paths = [])
+  def simple_json_pp(json, path = '', ignore_paths = [], sort_keys = false)
     # Check if current path should be ignored
     matched, reason = path_matches_ignore?(path, ignore_paths)
     if matched
@@ -71,8 +72,9 @@ module HelpMeUnderstandJSON
     case json
     when Hash
       # Process each hash key-value pair recursively
-      json.map do |(key, value)|
-        simple_json_pp(value, "#{path}.#{key}", ignore_paths)
+      keys = sort_keys ? json.keys.sort : json.keys
+      keys.map do |key|
+        simple_json_pp(json[key], "#{path}.#{key}", ignore_paths, sort_keys)
       end.join
     when Array
       # Handle arrays by showing merged structure or first element
@@ -80,10 +82,10 @@ module HelpMeUnderstandJSON
         "#{path}.[] = []\n"
       elsif json[0].is_a?(Hash)
         # Merge all hash elements to show combined structure
-        simple_json_pp({}.merge(*json), "#{path}.[](merged)", ignore_paths)
+        simple_json_pp({}.merge(*json), "#{path}.[](merged)", ignore_paths, sort_keys)
       else
         # Show first element as representative
-        simple_json_pp(json[0], "#{path}.[](first)", ignore_paths)
+        simple_json_pp(json[0], "#{path}.[](first)", ignore_paths, sort_keys)
       end
     when nil
       # Represent null values
@@ -101,6 +103,7 @@ end
 # CLI entry point
 if $PROGRAM_NAME == __FILE__
   ignore_paths = []
+  sort_keys = false
 
   # Parse command-line options
   OptionParser.new do |opts|
@@ -116,6 +119,10 @@ if $PROGRAM_NAME == __FILE__
       ignore_paths << path
     end
 
+    opts.on('-S', '--sort-keys', 'Sort hash keys alphabetically') do
+      sort_keys = true
+    end
+
     opts.on('-h', '--help', 'Show this help message') do
       puts opts
       puts ''
@@ -125,6 +132,8 @@ if $PROGRAM_NAME == __FILE__
       puts '  hmuj.rb --ignore-path=.user.password --ignore-path=.secret data.json'
       puts '  hmuj.rb --ignore-path=.user.password::"sensitive data" data.json'
       puts '  hmuj.rb --ignore-path=.*.secret::"all secrets" data.json'
+      puts '  hmuj.rb -S data.json'
+      puts '  hmuj.rb -S --ignore-path=.*.password data.json'
       exit
     end
   end.parse!
@@ -132,7 +141,7 @@ if $PROGRAM_NAME == __FILE__
   # Parse and display JSON structure
   begin
     json = JSON.parse(ARGF.read)
-    puts HelpMeUnderstandJSON.simple_json_pp(json, '', ignore_paths)
+    puts HelpMeUnderstandJSON.simple_json_pp(json, '', ignore_paths, sort_keys)
   rescue JSON::ParserError => e
     warn "Error parsing JSON: #{e.message}"
     exit 1
