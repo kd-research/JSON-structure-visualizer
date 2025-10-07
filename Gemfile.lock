@@ -1,0 +1,17 @@
+GEM
+  remote: https://rubygems.org/
+  specs:
+    mini_portile2 (2.8.9)
+    sqlite3 (2.7.4)
+      mini_portile2 (~> 2.8.0)
+    sqlite3 (2.7.4-x86_64-linux-gnu)
+
+PLATFORMS
+  ruby
+  x86_64-linux
+
+DEPENDENCIES
+  sqlite3
+
+BUNDLED WITH
+   2.7.2
