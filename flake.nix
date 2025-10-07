@@ -25,10 +25,21 @@
           lockfile = ./Gemfile.lock;
           gemset = ./gemset.nix;
         };
+        hmujPackage = pkgs.stdenv.mkDerivation {
+          pname = "hmuj";
+          version = "0.1.0";
+          src = ./.;
+          buildInputs = [ myRubyPackage ruby ];
+          installPhase = ''
+            mkdir -p $out/bin
+            cp hmuj.rb $out/bin/hmuj.rb
+            chmod +x $out/bin/hmuj.rb
+          '';
+        };
       in
       {
 
-        defaultPackage = myRubyPackage;
+        defaultPackage = hmujPackage;
 
         # used by nix shell and nix develop
         devShell =
