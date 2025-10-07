@@ -2,6 +2,7 @@
 # frozen_string_literal: true
 
 require 'json'
+require 'optparse'
 
 # HelpMeUnderstandJSON - A utility to visualize JSON structure in a readable format
 #
@@ -13,21 +14,46 @@ module HelpMeUnderstandJSON
 
   module_function
 
+  # Check if a path matches any ignore pattern (exact or glob)
+  #
+  # @param path [String] The path to check
+  # @param ignore_paths [Array<String>] Array of exact paths or glob patterns
+  # @return [Boolean] True if path should be ignored
+  def path_matches_ignore?(path, ignore_paths)
+    ignore_paths.any? do |pattern|
+      if pattern.include?('*')
+        # Convert glob pattern to regex
+        # Escape special regex characters except *
+        regex_pattern = Regexp.escape(pattern).gsub('\*', '.*')
+        path.match?(/^#{regex_pattern}$/)
+      else
+        # Exact match
+        path == pattern
+      end
+    end
+  end
+
   # Pretty-print JSON structure with dot-notation paths
   #
   # @param json [Object] The JSON object to process (Hash, Array, or primitive)
   # @param path [String] The current path in dot-notation (used for recursion)
+  # @param ignore_paths [Array<String>] Paths to ignore (exact or glob patterns)
   # @return [String] Formatted string representation of the JSON structure
   #
   # @example
   #   simple_json_pp({ "user" => { "name" => "John" } })
   #   # => ".user.name = \"John\"\n"
-  def simple_json_pp(json, path = '')
+  def simple_json_pp(json, path = '', ignore_paths = [])
+    # Check if current path should be ignored
+    if path_matches_ignore?(path, ignore_paths)
+      return "#{path} (ignored)\n"
+    end
+
     case json
     when Hash
       # Process each hash key-value pair recursively
       json.map do |(key, value)|
-        simple_json_pp(value, "#{path}.#{key}")
+        simple_json_pp(value, "#{path}.#{key}", ignore_paths)
       end.join
     when Array
       # Handle arrays by showing merged structure or first element
@@ -35,10 +61,10 @@ module HelpMeUnderstandJSON
         "#{path}.[] = []\n"
       elsif json[0].is_a?(Hash)
         # Merge all hash elements to show combined structure
-        simple_json_pp({}.merge(*json), "#{path}.[](merged)")
+        simple_json_pp({}.merge(*json), "#{path}.[](merged)", ignore_paths)
       else
         # Show first element as representative
-        simple_json_pp(json[0], "#{path}.[](first)")
+        simple_json_pp(json[0], "#{path}.[](first)", ignore_paths)
       end
     when nil
       # Represent null values
@@ -55,21 +81,35 @@ end
 
 # CLI entry point
 if $PROGRAM_NAME == __FILE__
-  # Display help information
-  if ARGV.include?('--help') || ARGV.include?('-h')
-    puts 'Usage: ruby hmuj.rb [file.json]'
-    puts 'Reads JSON from a file or standard input and pretty-prints its structure.'
-    puts ''
-    puts 'Examples:'
-    puts '  ruby hmuj.rb data.json'
-    puts '  echo \'{"key":"value"}\' | ruby hmuj.rb'
-    exit
-  end
+  ignore_paths = []
+
+  # Parse command-line options
+  OptionParser.new do |opts|
+    opts.banner = 'Usage: hmuj.rb [options] [file.json]'
+    opts.separator ''
+    opts.separator 'Reads JSON from a file or standard input and pretty-prints its structure.'
+    opts.separator ''
+    opts.separator 'Options:'
+
+    opts.on('--ignore-path=PATH', 'Ignore a specific path (can be used multiple times)') do |path|
+      ignore_paths << path
+    end
+
+    opts.on('-h', '--help', 'Show this help message') do
+      puts opts
+      puts ''
+      puts 'Examples:'
+      puts '  hmuj.rb data.json'
+      puts '  echo \'{"key":"value"}\' | hmuj.rb'
+      puts '  hmuj.rb --ignore-path=.user.password --ignore-path=.secret data.json'
+      exit
+    end
+  end.parse!
 
   # Parse and display JSON structure
   begin
     json = JSON.parse(ARGF.read)
-    puts HelpMeUnderstandJSON.simple_json_pp(json)
+    puts HelpMeUnderstandJSON.simple_json_pp(json, '', ignore_paths)
   rescue JSON::ParserError => e
     warn "Error parsing JSON: #{e.message}"
     exit 1
