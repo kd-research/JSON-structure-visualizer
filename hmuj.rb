@@ -47,6 +47,7 @@ module HelpMeUnderstandJSON
       # Display primitive values (strings, numbers, booleans)
       data = json.inspect
       data = "#{data.slice(0, STRUCTURE_LIMIT - 3)}..." if data.length > STRUCTURE_LIMIT
+      data += '"' if data.start_with?('"') && !data.end_with?('"')
       "#{path} = #{data}\n"
     end
   end
